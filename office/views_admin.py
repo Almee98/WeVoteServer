@@ -1381,6 +1381,7 @@ def office_summary_view(request, office_id=0, contest_office_we_vote_id=''):
     state_code_for_template = ''
 
     candidate_possibility_search = request.GET.get('candidate_possibility_search', "")
+    # print(candidate_possibility_search) and see what data is coming from the server
     google_civic_election_id = convert_to_int(request.GET.get('google_civic_election_id', 0))
     office_search = request.GET.get('office_search', "")
 
@@ -1651,10 +1652,14 @@ def office_summary_add_candidates_process_view(
     names_to_search_list = []
     # Break up multiple lines
     candidate_possibility_search_list = candidate_possibility_search.splitlines()
+    # print(candidate_possibility_search_list) and check the data in the list
     for one_line in candidate_possibility_search_list:
+        # print(one_line)
         one_line_stripped = one_line.strip()
+        # print(one_line_stripped)
         if positive_value_exists(one_line_stripped) and one_line_stripped not in names_to_search_list:
             names_to_search_list.append(one_line_stripped)
+            # print(names_to_search_list)
 
     if contest_office and positive_value_exists(contest_office.state_code):
         state_code = contest_office.state_code
@@ -1671,6 +1676,7 @@ def office_summary_add_candidates_process_view(
         one_name_slug = slugify(one_name_to_search)
         choices_made[one_name_slug] = request.GET.get("select_for_{one_name_slug}"
                                                       "".format(one_name_slug=one_name_slug))
+    # print(choices_made)
 
     # Search among candidates in upcoming elections
     allowed_years = []
@@ -1740,6 +1746,13 @@ def office_summary_add_candidates_process_view(
         if one_name_slug in choices_made:
             value = choices_made[one_name_slug]
             if is_politician_we_vote_id(value):
+                # TODO: add console statements here for testing.
+                # wv34cand5329
+                # This is positive testing:
+                # check with dummy wevote ID (wrong ID) -> function should return a True
+                # check in the database if new candidate is created or not
+                # This is negative testing:
+                # check with existing id, and see if the function returns a false
                 create_candidate_for_politician_we_vote_id = value
             elif is_candidate_we_vote_id(value):
                 link_candidate_we_vote_id_to_office = value
