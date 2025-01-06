@@ -249,6 +249,94 @@ def create_organization_from_politician(
     }
     return results
 
+def find_duplicate_organization(we_vote_organization, ignore_organization_id_list, read_only=True):
+    status = ''
+    success = True
+    if not hasattr(we_vote_organization, 'organization_name'):
+        status += "FIND_DUPLICATE_ORGANIZATION_MISSING_ORGANIZATION_OBJECT "
+        error_results = {
+            'success':                              False,
+            'status':                               status,
+            'organization_merge_possibility_found': False,
+            'organization_list':                    [],
+        }
+        return error_results
+    
+    organization_manager = OrganizationManager()
+    organization_twitter_handle_list = []
+    if positive_value_exists(we_vote_organization.organization_twitter_handle):
+        organization_twitter_handle_list.append(we_vote_organization.organization_twitter_handle)
+    if positive_value_exists(we_vote_organization.twitter_handle2):
+        organization_twitter_handle_list.append(we_vote_organization.twitter_handle2)
+    if positive_value_exists(we_vote_organization.twitter_handle3):
+        organization_twitter_handle_list.append(we_vote_organization.twitter_handle3)
+    if positive_value_exists(we_vote_organization.twitter_handle4):
+        organization_twitter_handle_list.append(we_vote_organization.twitter_handle4)
+    if positive_value_exists(we_vote_organization.twitter_handle5):
+        organization_twitter_handle_list.append(we_vote_organization.twitter_handle5)
+
+    # Search for other organizations that shrae the same elections that match name and election
+    try:
+        results = organization_manager.retrieve_organizations_from_non_unique_identifiers(
+            state_code=we_vote_organization.state_code,
+            twitter_handle_list=organization_twitter_handle_list,
+            organization_name=we_vote_organization.organization_name,
+            ignore_organization_id_list=ignore_organization_id_list,
+            read_only=read_only)
+        
+        if results['organization_found']:
+            conflict_results = figure_out_organization_conflict_values(we_vote_organization, results['organization'])
+            organization_merge_conflict_values = conflict_results['organization_merge_conflict_values']
+            if not conflict_results['success']:
+                status += conflict_results['status']
+                success = conflict_results['success']
+            status += "FIND_DUPLICATE_ORGANIZATION_DUPLICATE_FOUND "
+            results = {
+                'success':                              success,
+                'status':                               status,
+                'organization_merge_possibility_found': True,
+                'organization_merge_possibility':       results['organization'],
+                'organization_merge_conflict_values':   organization_merge_conflict_values,
+                'organization_list':                    results['organization_list'],
+            }
+            return results
+        elif results['organization_list_found']:
+            # Only deal with merging the incoming organization and the first on found
+            conflict_results = figure_out_organization_conflict_values(we_vote_organization, results['organization_list'][0])
+            organization_merge_conflict_values = conflict_results['organization_merge_conflict_values']
+            if not conflict_results['success']:
+                status += conflict_results['status']
+                success = conflict_results['success']
+            status += "FIND_DUPLICATE_ORGANIZATION_DUPLICATE_FOUND_FROM_LIST "
+            results = {
+                'success':                              success,
+                'status':                               status,
+                'organization_merge_possibility_found': True,
+                'organization_merge_possibility':       results['organization_list'][0],
+                'organization_merge_conflict_values':   organization_merge_conflict_values,
+            }
+            return results
+        else:
+            status += "FIND_DUPLICATE_ORGANIZATION_NO_DUPLICATE_FOUND "
+            results = {
+                'success':                              success,
+                'status':                               status,
+                'organization_merge_possibility_found': False,
+                'organization_list':                    results['organization_list'],
+            }
+            return results
+
+    except Exception as e:
+        status += "FIND_DUPLICATE_ORGANIZATION_ERROR: " + str(e) + ' '
+        success = False
+
+    results = {
+        'success':                              success,
+        'status':                               status,
+        'organization_merge_possibility_found': False,
+        'organization_list':                    [],
+    }
+    return results
 
 def delete_membership_link_entries_for_voter(from_voter_we_vote_id):
     status = ''

@@ -3572,6 +3572,46 @@ class Organization(models.Model):
         else:
             return ''
 
+class OrganizationsAreNotDuplicates(models.Model):
+    """
+    When checking for duplicates, there are times when we want to explicitly mark two organizations as NOT duplicates
+    """
+    MultipleObjectsReturned = None
+    DoesNotExist = None
+    objects = None
+    organization1_we_vote_id = models.CharField(
+        verbose_name="first organization we are tracking", max_length=255, null=True, unique=False, db_index=True)
+    organization2_we_vote_id = models.CharField(
+        verbose_name="second organization we are tracking", max_length=255, null=True, unique=False, db_index=True)
+   
+    def fetch_other_organization_we_vote_id(self, one_we_vote_id):
+        if one_we_vote_id == self.organization1_we_vote_id:
+            return self.organization2_we_vote_id
+        elif one_we_vote_id == self.organization2_we_vote_id:
+            return self.organization1_we_vote_id
+        else:
+            # If the we_vote_id passed in wasn't found, don't return another we_vote_id
+            return ""
+
+
+class OrganizationsArePossibleDuplicates(models.Model):
+    """
+    When checking for duplicates, there are times when we want to explicitly mark two organizations as possible duplicates
+    """
+
+
+    organization1_we_vote_id = models.CharField(max_length=255, null=True, unique=False, db_index=True)
+    organization2_we_vote_id = models.CharField(max_length=255, null=True, unique=False, db_index=True)
+    state_code = models.CharField(max_length=2, null=True)
+   
+    def fetch_other_organization_we_vote_id(self, one_we_vote_id):
+        if one_we_vote_id == self.organization1_we_vote_id:
+            return self.organization2_we_vote_id
+        elif one_we_vote_id == self.organization2_we_vote_id:
+            return self.organization1_we_vote_id
+        else:
+            # If the we_vote_id passed in wasn't found, don't return another we_vote_id
+            return ""
 
 class OrganizationChangeLog(models.Model):  # OrganizationLogEntry would be another name
     """

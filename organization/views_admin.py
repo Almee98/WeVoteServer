@@ -5,17 +5,19 @@
 from .controllers import full_domain_string_available, merge_these_two_organizations,\
     move_organization_followers_to_another_organization, move_organization_membership_link_to_another_organization, \
     move_organization_team_member_entries_to_another_organization, organizations_import_from_master_server, \
-    organization_politician_match, push_organization_data_to_other_table_caches, subdomain_string_available
+    organization_politician_match, push_organization_data_to_other_table_caches, subdomain_string_available, find_duplicate_organization
 from .controllers_fastly import add_wevote_subdomain_to_fastly, add_subdomain_route53_record, \
     get_wevote_subdomain_status
 from .models import GROUP, INDIVIDUAL, Organization, OrganizationChangeLog, OrganizationReservedDomain, \
-    OrganizationTeamMember, ORGANIZATION_UNIQUE_IDENTIFIERS
+    OrganizationTeamMember, ORGANIZATION_UNIQUE_IDENTIFIERS, OrganizationsArePossibleDuplicates
 from base64 import b64encode
 from admin_tools.views import redirect_to_sign_in_page
 from campaign.controllers import move_campaignx_to_another_organization
 from campaign.models import CampaignXListedByOrganization, CampaignXManager
 from candidate.models import CandidateCampaign, CandidateListManager, CandidateManager, \
     PROFILE_IMAGE_TYPE_UNKNOWN, PROFILE_IMAGE_TYPE_UPLOADED
+from volunteer_task.models import VOLUNTEER_ACTION_DUPLICATE_POLITICIAN_ANALYSIS, \
+    VOLUNTEER_ACTION_POLITICIAN_DEDUPLICATION, VolunteerTaskManager
 from config.base import get_environment_variable
 from datetime import datetime
 from django.db.models import Q
@@ -3513,3 +3515,108 @@ def reserved_domain_list_view(request):
         'state_code':               state_code,
     }
     return render(request, 'organization/reserved_domain_list.html', template_values)
+
+@login_required
+def find_and_merge_duplicate_organizations_view(request):
+    # admin, analytics_admin, partner_organization, political_data_manager, political_data_viewer, verified_volunteer
+    authority_required = {'verified_volunteer'}
+    if not voter_has_authority(request, authority_required):
+        return redirect_to_sign_in_page(request, authority_required)
+   
+    find_number_of_duplicates = request.GET.get('find_number_of_duplicates', 0)
+    state_code = request.GET.get('state_code', '')
+    status = ""
+    organization_manager = OrganizationManager()
+
+
+    queryset = OrganizationsArePossibleDuplicates.objects.using('readonly').all()
+    if positive_value_exists(state_code):
+        queryset = queryset.filter(state_code__iexact=state_code)
+    queryset = queryset.exclude(organization1_we_vote_id=None)
+    queryset = queryset.exclude(organization2_we_vote_id=None)
+    queryset_organization1 = queryset.values('organization1_we_vote_id', flat=True).distinct()
+    exclude_organization1_we_vote_id_list = list(queryset_organization1)
+    queryset_organization2 = queryset.values('organization2_we_vote_id', flat=True).distinct()
+    exclude_organization2_we_vote_id_list = list(queryset_organization2)
+    exclude_organization_we_vote_id_list = \
+        list(set(exclude_organization1_we_vote_id_list + exclude_organization2_we_vote_id_list))
+   
+    organization_query = Organization.objects.using('readonly').all()
+    organization_query = organization_query.exclude(we_vote_id__in=exclude_organization_we_vote_id_list)
+    if positive_value_exists(state_code):
+        organization_query = organization_query.filter(state_served_code__iexact=state_code)
+    organization_list = list(organization_query)
+
+
+    try:
+        # Give the volunteer who entered this credit
+        volunteer_task_manager = VolunteerTaskManager()
+        task_results = volunteer_task_manager.create_volunteer_task_completed(
+            action_constant=VOLUNTEER_ACTION_DUPLICATE_POLITICIAN_ANALYSIS,
+            request=request,
+        )
+    except Exception as e:
+        status += 'FAILED_TO_CREATE_VOLUNTEER_TASK_COMPLETED: ' \
+                  '{error} [type: {error_type}]'.format(error=e, error_type=type(e))
+    
+    # Loop through all the organizations in this election
+    for we_vote_organization in organization_list:
+        if we_vote_organization.we_vote_id in exclude_organization_we_vote_id_list:
+            continue
+        # Start ignore list with entries already reviewed
+        ignore_organization_id_list = exclude_organization_we_vote_id_list
+        # Add current entry to ignore list
+        ignore_organization_id_list.append(we_vote_organization.we_vote_id)
+        # Now check for others we have already labeled as "not a duplicate"
+        not_a_duplicate_list = organization_manager.fetch_organizations_are_not_duplicates_list_we_vote_id(
+            we_vote_organization.we_vote_id)
+        ignore_organization_id_list += not_a_duplicate_list
+
+        results = find_duplicate_organization(we_vote_organization, ignore_organization_id_list, read_only=True)
+
+        # If we find organizations to merge, store them for review
+        if results['organization_merge_possibility_found']:
+            organization_option1_for_template = we_vote_organization
+            organization_option2_for_template = results['organization_merge_possibility']
+
+            # Can we automatically merge these organizations?
+            merge_results = merge_if_duplicate_organizations(
+                organization_option1_for_template,
+                organization_option2_for_template,
+                results['organization_merge_conflict_values'])
+            
+            if merge_results['organizations_merged']:
+                organization = merge_results['organization']
+                if organization.we_vote_id not in exclude_organization_we_vote_id_list:
+                    exclude_organization_we_vote_id_list.append(organization.we_vote_id)
+                if we_vote_organization.we_vote_id not in exclude_organization_we_vote_id_list:
+                    exclude_organization_we_vote_id_list.append(we_vote_organization.we_vote_id)
+                OrganizationsArePossibleDuplicates.objects.create(
+                    organization1_we_vote_id=organization.we_vote_id,
+                    organization2_we_vote_id=None,
+                    state_code=state_code,
+                )
+                messages.add_message(request, messages.INFO,
+                                    "Organization {organization_name} automatically merged."
+                                    "".format(organization_name=organization.organization_name))
+            else:
+                # Add an entry showing that this is a possible match
+                OrganizationsArePossibleDuplicates.objects.create(
+                    organization1_we_vote_id=we_vote_organization.we_vote_id,
+                    organization2_we_vote_id=organization_option2_for_template.we_vote_id,
+                    state_code=state_code,
+                )
+                if organization_option2_for_template.we_vote_id not in exclude_organization_we_vote_id_list:
+                    exclude_organization_we_vote_id_list.append(organization_option2_for_template.we_vote_id)
+        else:
+            # No matches found
+            OrganizationsArePossibleDuplicates.objects.create(
+                organization1_we_vote_id=we_vote_organization.we_vote_id,
+                organization2_we_vote_id=None,
+                state_code=state_code,
+            )
+    
+    return HttpResponseRedirect(reverse('organization:duplicates_list', args=()) +
+                                "?state_code="
+                                "".format(state_code=state_code))
+        
