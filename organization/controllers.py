@@ -47,7 +47,8 @@ from .controllers_fastly import add_wevote_subdomain_to_fastly, add_subdomain_ro
     get_wevote_subdomain_status
 from .models import Organization, OrganizationChangeLog, OrganizationListManager, OrganizationManager, \
     OrganizationMembershipLinkToVoter, \
-    OrganizationReservedDomain, OrganizationTeamMember, ORGANIZATION_UNIQUE_IDENTIFIERS, PUBLIC_FIGURE
+    OrganizationReservedDomain, OrganizationTeamMember, ORGANIZATION_UNIQUE_IDENTIFIERS, PUBLIC_FIGURE, \
+    ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED
 
 logger = wevote_functions.admin.get_logger(__name__)
 
@@ -354,10 +355,11 @@ def merge_if_duplicate_organizations(organization1, organization2, conflict_valu
     # Are there any comparisons that require admin intervention?
     merge_choices = {}
     clear_these_attributes_from_organization2 = []
+
+    # Loop over all organization-specific unique identifiers
     for attribute in ORGANIZATION_UNIQUE_IDENTIFIERS:
-        if attribute == "ballotpedia_id" \
-                or attribute == "other_source_photo_url" \
-                or attribute == "seo_friendly_path" \
+        # Changed ballotpedia_id to ballotpedia_page_title
+        if attribute == "ballotpedia_page_title" \
                 or attribute == "we_vote_hosted_profile_image_url_large" \
                 or attribute == "we_vote_hosted_profile_image_url_medium" \
                 or attribute == "we_vote_hosted_profile_image_url_tiny":
