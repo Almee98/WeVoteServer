@@ -249,6 +249,8 @@ def create_organization_from_politician(
     }
     return results
 
+
+
 def find_duplicate_organization(we_vote_organization, ignore_organization_id_list, read_only=True):
     status = ''
     success = True
@@ -263,27 +265,22 @@ def find_duplicate_organization(we_vote_organization, ignore_organization_id_lis
         return error_results
     
     organization_manager = OrganizationManager()
+
+    # Collect the organization's Twitter handle for duplicate checking
     organization_twitter_handle_list = []
     if positive_value_exists(we_vote_organization.organization_twitter_handle):
         organization_twitter_handle_list.append(we_vote_organization.organization_twitter_handle)
-    if positive_value_exists(we_vote_organization.twitter_handle2):
-        organization_twitter_handle_list.append(we_vote_organization.twitter_handle2)
-    if positive_value_exists(we_vote_organization.twitter_handle3):
-        organization_twitter_handle_list.append(we_vote_organization.twitter_handle3)
-    if positive_value_exists(we_vote_organization.twitter_handle4):
-        organization_twitter_handle_list.append(we_vote_organization.twitter_handle4)
-    if positive_value_exists(we_vote_organization.twitter_handle5):
-        organization_twitter_handle_list.append(we_vote_organization.twitter_handle5)
 
-    # Search for other organizations that shrae the same elections that match name and election
+    # Search for other organizations with matching identifiers
     try:
         results = organization_manager.retrieve_organizations_from_non_unique_identifiers(
-            state_code=we_vote_organization.state_code,
+            state_served_code=we_vote_organization.state_served_code,
             twitter_handle_list=organization_twitter_handle_list,
             organization_name=we_vote_organization.organization_name,
             ignore_organization_id_list=ignore_organization_id_list,
             read_only=read_only)
         
+        # If one duplicate organization is found, find and deal with conflict values
         if results['organization_found']:
             conflict_results = figure_out_organization_conflict_values(we_vote_organization, results['organization'])
             organization_merge_conflict_values = conflict_results['organization_merge_conflict_values']
@@ -300,6 +297,7 @@ def find_duplicate_organization(we_vote_organization, ignore_organization_id_lis
                 'organization_list':                    results['organization_list'],
             }
             return results
+        # If multiple duplicate organizations are found, find and deal with conflict values.
         elif results['organization_list_found']:
             # Only deal with merging the incoming organization and the first on found
             conflict_results = figure_out_organization_conflict_values(we_vote_organization, results['organization_list'][0])
@@ -337,6 +335,201 @@ def find_duplicate_organization(we_vote_organization, ignore_organization_id_lis
         'organization_list':                    [],
     }
     return results
+
+def merge_if_duplicate_organizations(organization1, organization2, conflict_values):
+    """
+    See also figure_out_organization_conflict_values
+    :param organization1:
+    :param organization2:
+    :param conflict_values:
+    :return:
+    """
+    success = True
+    status = "MERGE_IF_DUPLICATE_ORGANIZATIONS "
+    organizations_merged = False
+    decisions_required = False
+    organization1_we_vote_id = organization1.we_vote_id
+    organization2_we_vote_id = organization2.we_vote_id
+
+    # Are there any comparisons that require admin intervention?
+    merge_choices = {}
+    clear_these_attributes_from_organization2 = []
+    for attribute in ORGANIZATION_UNIQUE_IDENTIFIERS:
+        if attribute == "ballotpedia_id" \
+                or attribute == "other_source_photo_url" \
+                or attribute == "seo_friendly_path" \
+                or attribute == "we_vote_hosted_profile_image_url_large" \
+                or attribute == "we_vote_hosted_profile_image_url_medium" \
+                or attribute == "we_vote_hosted_profile_image_url_tiny":
+            if positive_value_exists(getattr(organization1, attribute)):
+                # We can proceed because organization1 has a valid attribute, so we can default to choosing that one
+                if attribute in ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED:
+                    clear_these_attributes_from_organization2.append(attribute)
+            elif positive_value_exists(getattr(organization2, attribute)):
+                # If we are here, organization1 does NOT have a valid attribute, but organization2 does
+                merge_choices[attribute] = getattr(organization2, attribute)
+                if attribute in ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED:
+                    clear_these_attributes_from_organization2.append(attribute)
+        else:
+            conflict_value = conflict_values.get(attribute, None)
+            if conflict_value == "CONFLICT":
+                if attribute == "organization_name" \
+                        or attribute == "first_name" \
+                        or attribute == "middle_name" \
+                        or attribute == "last_name":
+                    # If the lower case versions of the name attribute are identical, choose the name
+                    #  that has upper and lower case letters, and do not require a decision
+                    organization1_attribute_value = getattr(organization1, attribute)
+                    try:
+                        organization1_attribute_value_lower_case = organization1_attribute_value.lower()
+                    except Exception:
+                        organization1_attribute_value_lower_case = None
+                    organization2_attribute_value = getattr(organization2, attribute)
+                    try:
+                        organization2_attribute_value_lower_case = organization2_attribute_value.lower()
+                    except Exception:
+                        organization2_attribute_value_lower_case = None
+                    if positive_value_exists(organization1_attribute_value_lower_case) \
+                            and organization1_attribute_value_lower_case == organization2_attribute_value_lower_case:
+                        # Give preference to value with both upper and lower case letters (as opposed to all uppercase)
+                        if any(char.isupper() for char in organization1_attribute_value) \
+                                and any(char.islower() for char in organization1_attribute_value):
+                            merge_choices[attribute] = getattr(organization1, attribute)
+                        else:
+                            merge_choices[attribute] = getattr(organization2, attribute)
+                    else:
+                        decisions_required = True
+                        break
+                else:
+                    decisions_required = True
+                    break
+            elif conflict_value == "ORGANIZATION2":
+                merge_choices[attribute] = getattr(organization2, attribute)
+                if attribute in ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED:
+                    clear_these_attributes_from_organization2.append(attribute)
+
+    if not decisions_required:
+        status += "NO_DECISIONS_REQUIRED "
+        merge_results = merge_these_two_organizations(
+            organization1_we_vote_id,
+            organization2_we_vote_id,
+            merge_choices,
+            clear_these_attributes_from_organization2
+        )
+
+        if not merge_results['success']:
+            success = False
+            status += merge_results['status']
+        elif merge_results['organizations_merged']:
+            organizations_merged = True
+        else:
+            status += "NOT_MERGED "
+
+    results = {
+        'success':              success,
+        'status':               status,
+        'organizations_merged':   organizations_merged,
+        'decisions_required':   decisions_required,
+        'organization':           organization1,
+    }
+    return results
+
+
+def merge_these_two_organizations(
+        organization1_we_vote_id,
+        organization2_we_vote_id,
+        admin_merge_choices={},
+        clear_these_attributes_from_organization2=[]):
+    """
+    Process the merging of two organizations
+    :param organization1_we_vote_id: The ID of the organization to keep.
+    :param organization2_we_vote_id: The ID of the organization to merge.
+    :param admin_merge_choices: Dictionary with the attribute name as the key, and the chosen value as the value.
+    :param clear_these_attributes_from_organization2: Attributes to clear in the second organization before deletion.
+    :return: Results dictionary.
+    """
+    status = ""
+    organization_manager = OrganizationManager()
+
+    # Retrieve organizations
+    organization1_results = organization_manager.retrieve_organization(organization_we_vote_id=organization1_we_vote_id)
+    if not organization1_results['organization_found']:
+        return {
+            'success': False,
+            'status': "MERGE_THESE_TWO_ORGANIZATIONS-COULD_NOT_RETRIEVE_ORGANIZATION1",
+            'organizations_merged': False,
+            'organization': None,
+        }
+    organization1 = organization1_results['organization']
+
+    organization2_results = organization_manager.retrieve_organization(organization_we_vote_id=organization2_we_vote_id)
+    if not organization2_results['organization_found']:
+        return {
+            'success': False,
+            'status': "MERGE_THESE_TWO_ORGANIZATIONS-COULD_NOT_RETRIEVE_ORGANIZATION2",
+            'organizations_merged': False,
+            'organization': None,
+        }
+    organization2 = organization2_results['organization']
+
+    # Merge admin-selected attributes
+    for attribute in ORGANIZATION_UNIQUE_IDENTIFIERS:
+        try:
+            if attribute in admin_merge_choices:
+                setattr(organization1, attribute, admin_merge_choices[attribute])
+        except Exception as e:
+            status += f"ATTRIBUTE_SAVE_FAILED ({attribute}): {e} "
+
+    # Preserve unique attributes (e.g., Twitter handle, email, URL)
+    from representative.controllers import add_value_to_next_representative_spot
+
+    unique_fields = [
+        'organization_twitter_handle', 'organization_email', 'organization_url', 'organization_phone_number'
+    ]
+    for field in unique_fields:
+        if positive_value_exists(getattr(organization2, field, None)):
+            results = add_value_to_next_representative_spot(
+                field_name_base=field,
+                new_value_to_add=getattr(organization2, field),
+                representative=organization1,
+            )
+            if results['success'] and results['values_changed']:
+                organization1 = results['representative']
+            if not results['success']:
+                status += results['status']
+
+    # Update related entities to new organization ID
+    related_entity_updates = [
+        move_candidates_to_another_organization,
+        move_positions_to_another_organization,
+        move_campaignx_to_another_organization,
+    ]
+    for update_function in related_entity_updates:
+        results = update_function(
+            from_organization_id=organization2.id,
+            from_organization_we_vote_id=organization2.we_vote_id,
+            to_organization_id=organization1.id,
+            to_organization_we_vote_id=organization1.we_vote_id,
+        )
+        if not results['success']:
+            status += results['status']
+
+    # Clear unique fields in organization2 and delete it
+    for attribute in clear_these_attributes_from_organization2:
+        setattr(organization2, attribute, None)
+    organization2.save()
+    organization2.delete()
+
+    # Save organization1 with updated attributes
+    organization1.save()
+
+    return {
+        'success': True,
+        'status': status,
+        'organizations_merged': True,
+        'organization': organization1,
+    }
+
 
 def delete_membership_link_entries_for_voter(from_voter_we_vote_id):
     status = ''

@@ -174,6 +174,15 @@ ORGANIZATION_UNIQUE_IDENTIFIERS = [
     'wikipedia_thumbnail_width',
     'youtube_url',
 ]
+ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED = [
+    'bioguide_id',
+    'fec_id',
+    'govtrack_id',
+    'linked_campaignx_we_vote_id',
+    'maplight_id',
+    'seo_friendly_path',
+    'thomas_id',
+]
 
 # These are values used in features_provided_bitmap
 # Mirrored in WebApp/src/js/constants/VoterConstants.js
