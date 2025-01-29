@@ -337,6 +337,8 @@ def find_duplicate_organization(we_vote_organization, ignore_organization_id_lis
     }
     return results
 
+# This function decides whether two organizations should be merged ased on certain attributes. It compares them
+# and either merges them automatically or flags for manual intervention, when conflicts are found.
 def merge_if_duplicate_organizations(organization1, organization2, conflict_values):
     """
     See also figure_out_organization_conflict_values
@@ -358,14 +360,13 @@ def merge_if_duplicate_organizations(organization1, organization2, conflict_valu
 
     # Loop over all organization-specific unique identifiers
     for attribute in ORGANIZATION_UNIQUE_IDENTIFIERS:
-        # Changed ballotpedia_id to ballotpedia_page_title
-        # Attributes were chosen as the most unique and consistent over time. i.e. Logos usually stay the same.
-        if attribute == "ballotpedia_page_title" \
+        # For the below special cases, we can default to choosing the value from organization1. 
+        # If organization1 does not have a valid attribute, we choose the value from organization2.
+        if attribute == "ballotpedia_id" \
                 or attribute == "ballotpedia_photo_url" \
                 or attribute == "chosen_logo_url_https" \
                 or attribute == "chosen_favicon_url_https" \
                 or attribute == "chosen_google_analytics_tracking_id" \
-                or attribute == "organization_name" \
                 or attribute == "we_vote_hosted_profile_image_url_large" \
                 or attribute == "we_vote_hosted_profile_image_url_medium" \
                 or attribute == "we_vote_hosted_profile_image_url_tiny":
@@ -378,6 +379,7 @@ def merge_if_duplicate_organizations(organization1, organization2, conflict_valu
                 merge_choices[attribute] = getattr(organization2, attribute)
                 if attribute in ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED:
                     clear_these_attributes_from_organization2.append(attribute)
+        # Handles the case if there are conflicting values for the attribute
         else:
             conflict_value = conflict_values.get(attribute, None)
             if conflict_value == "CONFLICT":
