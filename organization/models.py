@@ -175,10 +175,9 @@ ORGANIZATION_UNIQUE_IDENTIFIERS = [
     'youtube_url',
 ]
 ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED = [
-    'chosen_google_analytics_tracking_id',
-    'politician_we_vote_id',
+    'we_vote_id',
     'vote_smart_id',
-    'wikipedia_page_id',
+    'fb_username',
 ]
 
 # These are values used in features_provided_bitmap

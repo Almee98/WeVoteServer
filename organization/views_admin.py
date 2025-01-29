@@ -877,6 +877,26 @@ def organization_new_view(request):
     return render(request, 'organization/organization_edit.html', template_values)
 
 @login_required
+def organization_delete_all_duplicates_view(request):
+    # admin, analytics_admin, partner_organization, political_data_manager, political_data_viewer, verified_volunteer
+    authority_required = {'political_data_manager'}
+    if not voter_has_authority(request, authority_required):
+        return redirect_to_sign_in_page(request, authority_required)
+
+    state_code = request.GET.get('state_code', '')
+    if positive_value_exists(state_code):
+        queryset = OrganizationsArePossibleDuplicates.objects.filter(
+            state_code__iexact=state_code,
+        )
+        queryset.delete()
+        messages.add_message(request, messages.INFO, 'Duplicate organization data deleted.')
+    else:
+        messages.add_message(request, messages.INFO, 'Duplicate organization data NOT deleted. State code missing.')
+    return HttpResponseRedirect(reverse('organization:duplicates_list', args=()) +
+                                "?state_code=" + str(state_code))
+
+
+@login_required
 def organization_duplicates_list_view(request):
     # admin, analytics_admin, partner_organization, political_data_manager, political_data_viewer, verified_volunteer
     authority_required = {'political_data_manager'}
