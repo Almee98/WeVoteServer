@@ -175,7 +175,6 @@ ORGANIZATION_UNIQUE_IDENTIFIERS = [
     'youtube_url',
 ]
 ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED = [
-    'we_vote_id',
     'vote_smart_id',
     'fb_username',
 ]
