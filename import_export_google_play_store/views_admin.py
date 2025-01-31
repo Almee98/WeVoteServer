@@ -28,8 +28,51 @@ import json
 import requests
 import wevote_functions.admin
 from wevote_functions.functions import convert_to_int, positive_value_exists, STATE_CODE_MAP
+from .controllers import build_service, get_crash_rate, get_anr_rate, get_errors
 
 logger = wevote_functions.admin.get_logger(__name__)
+
+
+@login_required
+def google_play_store_test_view(request):
+    """
+    Provide an index of import/export actions (for We Vote data maintenance)
+    """
+    messages_on_stage = get_messages(request)
+    # HELLO WORLD
+    service = build_service()
+    package_name = 'org.wevote.cordova'  # Replace with your app's package name
+
+    crash_rate_data = get_crash_rate(service, package_name)
+    if crash_rate_data:
+        print(crash_rate_data)
+    else:
+        print("crash_rate_data: No data returned")
+
+    anr_rate_data = get_anr_rate(service, package_name)
+    if anr_rate_data:
+        print(anr_rate_data)
+    else:
+        print("anr_rate_data: No data returned")
+
+    errors_data = get_errors(service, package_name)
+    if errors_data:
+        total_errors = errors_data.get('totalErrorCount', 0)
+        error_types = errors_data.get('errorTypes', [])
+
+        print(f"Total errors: {total_errors}")
+        for error_type in error_types:
+            print(f"Error type: {error_type.get('name', 'Unknown')}, Count: {error_type.get('count', 0)}")
+
+        print("Full errors data:")
+        print(json.dumps(errors_data, indent=2))
+    else:
+        print("errors_data: No data returned")
+
+    template_values = {
+        'messages_on_stage':    messages_on_stage,
+    }
+    return render(request, 'import_export_google_play_store/index.html', template_values)
 
 
 @login_required

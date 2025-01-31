@@ -10,4 +10,5 @@ urlpatterns = [
     re_path(r'^$', views_admin.import_export_google_play_store_index_view,
             name='import_export_google_play_store_index'),
     re_path(r'^event_list/$', views_admin.google_play_store_event_list_view, name='google_play_store_event_list'),
+    re_path(r'^test/$', views_admin.google_play_store_test_view, name='google_play_store_test'),
 ]
