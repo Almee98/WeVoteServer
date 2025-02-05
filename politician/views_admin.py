@@ -564,6 +564,9 @@ def politicians_import_from_master_server_view(request):
 
 @login_required
 def politician_list_view(request):
+    # Pagination parameters
+    page = int(request.GET.get('page', 0))  # Default to page 0
+    items_per_page = 25  # Number of items per page
     # admin, analytics_admin, partner_organization, political_data_manager, political_data_viewer, verified_volunteer
     authority_required = {'partner_organization', 'political_data_viewer', 'verified_volunteer'}
     if not voter_has_authority(request, authority_required):
@@ -992,10 +995,18 @@ def politician_list_view(request):
 
         politician_list_count = politician_query.count()
         if not positive_value_exists(show_all):
-            politician_list = politician_query.order_by('politician_name')[:25]
+            start_index = page * items_per_page
+            end_index = start_index + items_per_page
+            politician_list = politician_query.order_by('politician_name')[start_index:end_index]
+            hide_pagination = politician_list_count <= items_per_page
+            has_previous_page = page > 0
+            has_next_page = end_index < politician_list_count
         else:
             # We still want to limit to 200
             politician_list = politician_query.order_by('politician_name')[:200]
+            hide_pagination = True
+            has_previous_page = False
+            has_next_page = False
     except ObjectDoesNotExist:
         # This is fine
         pass
@@ -1168,23 +1179,31 @@ def politician_list_view(request):
             show_related_candidates=show_related_candidates,
             was_candidate_recently=was_candidate_recently,
             )
+    # Update URLs for previous and next pages
+    previous_page_url = f"?page={page - 1}&state_code={state_code}&{checkbox_url_variables}"
+    next_page_url = f"?page={page + 1}&state_code={state_code}&{checkbox_url_variables}"
     template_values = {
         'checkbox_url_variables':       checkbox_url_variables,
+        'current_page_number':          page,
         'election_list':                election_list,
         'exclude_politician_analysis_done': exclude_politician_analysis_done,
         'google_civic_election_id':     google_civic_election_id,
+        'hide_pagination':              hide_pagination,
         'hide_politicians_with_photos': hide_politicians_with_photos,
         'messages_on_stage':            messages_on_stage,
+        'next_page_url':                next_page_url,
         'organization_manual_intervention_needed': organization_manual_intervention_needed,
         'organization_might_be_needed_count':   organization_might_be_needed_count,
         'politicians_need_followers_count':     politicians_need_followers_count,
         'politician_list':              politician_list,
         'politician_search':            politician_search,
+        'previous_page_url':            previous_page_url,
         'show_all':                     show_all,
         'show_battleground':            show_battleground,
         'show_politicians_with_email':  show_politicians_with_email,
         'show_related_candidates':      show_related_candidates,
         'show_ocd_id_state_mismatch':   show_ocd_id_state_mismatch,
+        "start_index":                  start_index,
         'state_code':                   state_code,
         'state_list':                   sorted_state_list,
         'was_candidate_recently':       was_candidate_recently,
