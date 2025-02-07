@@ -9,7 +9,8 @@ from .controllers import full_domain_string_available, merge_these_two_organizat
 from .controllers_fastly import add_wevote_subdomain_to_fastly, add_subdomain_route53_record, \
     get_wevote_subdomain_status
 from .models import GROUP, INDIVIDUAL, Organization, OrganizationChangeLog, OrganizationReservedDomain, \
-    OrganizationTeamMember, ORGANIZATION_UNIQUE_IDENTIFIERS, OrganizationsArePossibleDuplicates, ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED
+    OrganizationTeamMember, ORGANIZATION_UNIQUE_IDENTIFIERS, ORGANIZATION_UNIQUE_ATTRIBUTES_TO_BE_CLEARED, \
+    OrganizationsArePossibleDuplicates
 from base64 import b64encode
 from admin_tools.views import redirect_to_sign_in_page
 from campaign.controllers import move_campaignx_to_another_organization
